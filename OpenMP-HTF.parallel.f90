@@ -6,7 +6,7 @@ program laplsolv
 	! Modified by Berkant Savas (besav@math.liu.se) April 2006
 	!-----------------------------------------------------------------------
 
-	integer, parameter                  :: nmax=10000, maxiter=10000
+	integer, parameter                  :: nmax=1000, maxiter=1000
 	integer										:: n, threads
 	double precision,parameter          :: tol=1.0E-3
 	double precision,dimension(0:nmax+1,0:nmax+1) :: T1,T2
@@ -56,32 +56,38 @@ program laplsolv
 	! Solve the linear system of equations using the Jacobi method
 	!call cpu_time(time0)
 	call system_clock(start_t)
+!$omp parallel do shared(T1,T2,start_t)
 	do k=1,maxiter
 
 		error=0.0D0
 
-!$omp parallel do shared(T1,T2) reduction(MAX:error)
+!!$omp parallel do shared(T1,T2,start_t) reduction(MAX:error)
+!$omp do  reduction(MAX:error)
 		do j=1,n
 			!tmp2=T(1:n,j)
 			T2(1:n,j)= ( T1(0:n-1,j) + T1(2:n+1,j) + T1(1:n,j+1) + T1(1:n,j-1) ) / 4.0D0 !tmp1 ) / 4.0D0
 			error=max(error,maxval(abs(T2(1:n,j)-T1(1:n,j))))
 			!tmp1=tmp2
 		end do
-!$omp end parallel  do
+!!$omp end parallel  do
+!$omp end do
 		if (error<tol) then
 			solution = 2
 			exit
 		end if
 
 !$omp barrier
+		error=0.0D0
 
 
-!$omp parallel do shared(T1,T2) reduction(MAX:error)
+!!$omp parallel do shared(T1,T2, start_t) reduction(MAX:error)
+!$omp do reduction(MAX:error)
 		do j=1,n
 			T1(1:n,j)= ( T2(0:n-1,j) + T2(2:n+1,j) + T2(1:n,j+1) + T2(1:n,j-1) ) / 4.0D0 !tmp1 ) / 4.0D0
 			error=max(error,maxval(abs(T2(1:n,j)-T1(1:n,j))))
 		end do
-!$omp end parallel  do
+!!$omp end parallel  do
+!$omp end  do
 
 		if (error<tol) then
 			solution = 1
@@ -98,7 +104,7 @@ program laplsolv
 	end if
 	r_time = ( dble(end_t) + dble(count_max) - dble(start_d)) / dble(count_rate)
 
-	write(unit=*,fmt=*) 'Time:',r_time,'Number of Iterations:',k*2 + solution - 1
+	write(unit=*,fmt=*) 'Time:',r_time,'Number of Iterations:',k*2 + (2 - solution)
 	if (solution < 2) then
 		write(unit=*,fmt=*) 'Temperature of element Tx(1,1)  =',T1(1,1)
 	else

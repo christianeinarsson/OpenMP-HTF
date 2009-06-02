@@ -6,7 +6,7 @@ program laplsolv
 	! Modified by Berkant Savas (besav@math.liu.se) April 2006
 	!-----------------------------------------------------------------------
 
-	integer, parameter                  :: nmax=1000, maxiter=1000
+	integer, parameter                  :: nmax=10000, maxiter=10000
 	integer										:: n, threads
 	double precision,parameter          :: tol=1.0E-3
 	double precision,dimension(0:nmax+1,0:nmax+1) :: T1,T2
@@ -23,7 +23,7 @@ program laplsolv
 	integer(4)									:: start_t, end_t, count_rate, count_max
 	!CLI argument buffer
 	character*100								::	buffer
-	character(len=20)							:: filename
+	character(len=30)							:: filename
 
 	call getarg(1, buffer)
 	read(buffer,*) threads
@@ -32,8 +32,8 @@ program laplsolv
 	call getarg(3, buffer)
 	read(buffer,*) filename
 
-	if(n > 1000) then
-		n = 1000
+	if(n > 10000) then
+		n = 10000
 	end if
 	if(threads > 8) then
 		threads = 8
@@ -89,6 +89,7 @@ program laplsolv
 		end if
 
 	end do
+
 
 	!call cpu_time(time1)
 	call system_clock(end_t, count_rate, count_max)

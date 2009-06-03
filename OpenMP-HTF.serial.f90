@@ -5,7 +5,7 @@ program laplsolv
 ! Written by Fredrik Berntsson (frber@math.liu.se) March 2003
 ! Modified by Berkant Savas (besav@math.liu.se) April 2006
 !-----------------------------------------------------------------------
-  integer, parameter                  :: nn=10000, maxiter=10000
+  integer, parameter                  :: nn=1000, maxiter=1000
 	integer										::n
   double precision,parameter          :: tol=1.0E-3
   double precision,dimension(0:nn+1,0:nn+1) :: T

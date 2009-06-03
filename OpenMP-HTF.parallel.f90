@@ -51,51 +51,60 @@ program laplsolv
 	T2(0:n+1 , 0)     = 1.0D0
 	T2(0:n+1 , n+1)   = 1.0D0
 	T2(n+1   , 0:n+1) = 2.0D0
-
+	solution = 0
 
 	! Solve the linear system of equations using the Jacobi method
 	!call cpu_time(time0)
 	call system_clock(start_t)
-!$omp parallel do shared(T1,T2,start_t)
+
+
+!$omp parallel  shared(T1,T2, solution, start_t, error)
 	do k=1,maxiter
 
 		error=0.0D0
 
 !!$omp parallel do shared(T1,T2,start_t) reduction(MAX:error)
+		if(solution == 0) then
 !$omp do  reduction(MAX:error)
-		do j=1,n
-			!tmp2=T(1:n,j)
-			T2(1:n,j)= ( T1(0:n-1,j) + T1(2:n+1,j) + T1(1:n,j+1) + T1(1:n,j-1) ) / 4.0D0 !tmp1 ) / 4.0D0
-			error=max(error,maxval(abs(T2(1:n,j)-T1(1:n,j))))
-			!tmp1=tmp2
-		end do
+			do j=1,n
+				!tmp2=T(1:n,j)
+				T2(1:n,j)= ( T1(0:n-1,j) + T1(2:n+1,j) + T1(1:n,j+1) + T1(1:n,j-1) ) / 4.0D0 !tmp1 ) / 4.0D0
+				error=max(error,maxval(abs(T2(1:n,j)-T1(1:n,j))))
+				!tmp1=tmp2
+			end do
 !!$omp end parallel  do
 !$omp end do
+
+		end if
 		if (error<tol) then
 			solution = 2
-			exit
+			!exit
 		end if
 
+!$omp flush
 !$omp barrier
+
 		error=0.0D0
 
 
 !!$omp parallel do shared(T1,T2, start_t) reduction(MAX:error)
+		if(solution == 0) then
 !$omp do reduction(MAX:error)
-		do j=1,n
-			T1(1:n,j)= ( T2(0:n-1,j) + T2(2:n+1,j) + T2(1:n,j+1) + T2(1:n,j-1) ) / 4.0D0 !tmp1 ) / 4.0D0
-			error=max(error,maxval(abs(T2(1:n,j)-T1(1:n,j))))
-		end do
+			do j=1,n
+				T1(1:n,j)= ( T2(0:n-1,j) + T2(2:n+1,j) + T2(1:n,j+1) + T2(1:n,j-1) ) / 4.0D0 !tmp1 ) / 4.0D0
+				error=max(error,maxval(abs(T2(1:n,j)-T1(1:n,j))))
+			end do
 !!$omp end parallel  do
 !$omp end  do
+		end if
 
 		if (error<tol) then
 			solution = 1
-			exit
+			!exit
 		end if
 
 	end do
-
+!$omp end parallel
 
 	!call cpu_time(time1)
 	call system_clock(end_t, count_rate, count_max)

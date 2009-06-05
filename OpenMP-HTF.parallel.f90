@@ -5,18 +5,18 @@ program laplsolv
 	! Written by Fredrik Berntsson (frber@math.liu.se) March 2003
 	! Modified by Berkant Savas (besav@math.liu.se) April 2006
 	!-----------------------------------------------------------------------
-
-	integer, parameter                  :: nmax=1000, maxiter=1000
+	use omp_lib
+	integer, parameter                  :: nmax=10000, maxiter=1000
 	integer										:: n, threads
 	double precision,parameter          :: tol=1.0E-3
-	double precision,dimension(0:nmax+1,0:nmax+1) :: T1,T2
+	!double precision,dimension(0:nmax+1,0:nmax+1) :: T1,T2
+	double precision,allocatable 			:: T1(:,:),T2(:,:)
 	double precision                    :: error,x
 	integer                             :: i,j,k
 	character(len=20)                   :: str
 
 	!Timing variables
-	double precision	 						:: r_time
-	integer(4)									:: start_t, end_t, count_rate, count_max
+	real(8)										:: start_t, end_t
 
 	!CLI argument buffer
 	character*100								::	buffer
@@ -29,13 +29,15 @@ program laplsolv
 	call getarg(3, buffer)
 	read(buffer,*) filename
 
-	if(n > 10000) then
-		n = 10000
+	if(n > nmax) then
+		n = nmax
 	end if
 	if(threads > 8) then
 		threads = 8
 	end if
 	call omp_set_num_threads(threads)
+	allocate( T1(0:n+1,0:n+1) )
+	allocate( T2(0:n+1,0:n+1) )
 
 	! Set boundary conditions and initial values for the unknowns
 	T1=0.0D0
@@ -48,10 +50,9 @@ program laplsolv
 	T2(n+1   , 0:n+1) = 2.0D0
 	solution = 0
 
-	! Solve the linear system of equations using the Jacobi method
-	!call cpu_time(time0)
-	call system_clock(start_t)
+	start_t = OMP_get_wtime()
 
+	! Solve the linear system of equations using the Jacobi method
 	do k=1,maxiter
 
 		error=0.0D0
@@ -79,14 +80,11 @@ program laplsolv
 		end if
 	end do
 
-	!call cpu_time(time1)
-	call system_clock(end_t, count_rate, count_max)
-	if (end_t > start_t)  then
-		count_max = 0
-	end if
-	r_time = ( dble(end_t) + dble(count_max) - dble(start_d)) / dble(count_rate)
+	end_t = OMP_get_wtime()
+	start_t = end_t - start_t
 	k = k*2 - (solution - 1)
-	write(unit=*,fmt=*) 'Time:',r_time,'Number of Iterations:',k
+
+	write(unit=*,fmt='(a,f7.3,a,i5.3)') 'Time:',start_t,'Number of Iterations:',k
 	if (solution < 2) then
 		write(unit=*,fmt=*) 'Temperature of element Tx(1,1)  =',T1(1,1)
 	else
@@ -95,8 +93,7 @@ program laplsolv
 
 	open(unit=7,action='write',file=filename,status='unknown')
 	write(unit=str,fmt='(a,i6,a)') '(',N,'F10.6)'
-	write(*, fmt='(A,I2,A,I6,A,I6,A,F7.3)') 'threads=', threads, ' n =', n, ' iterations =', k, ' time-to-solve =', r_time
-	write(unit=7, fmt='(A,I2,A,I6,A,I6,A,F7.3)') 'threads=', threads, ' n =', n, ' iterations =', k, ' time-to-solve =', r_time
+	write(unit=7, fmt='(A,I2,A,I6,A,I6,A,F7.3)') 'threads=', threads, ' n =', n, ' iterations =', k, ' time-to-solve =', start_t
 	if(solution == 1) then
 		do i=0,n+1
 			write (unit=7,fmt=str) T1(i,0:n+1)

@@ -6,11 +6,11 @@ program laplsolv
 	! Modified by Berkant Savas (besav@math.liu.se) April 2006
 	!-----------------------------------------------------------------------
 	use omp_lib
-	integer, parameter                  :: nmax=10000, maxiter=1000
+	integer, parameter                  :: nmax=1000, maxiter=1000
 	integer										:: n, threads
 	double precision,parameter          :: tol=1.0E-3
-	!double precision,dimension(0:nmax+1,0:nmax+1) :: T1,T2
-	double precision,allocatable 			:: T1(:,:),T2(:,:)
+	double precision,dimension(0:nmax+1,0:nmax+1) :: T1,T2
+	!double precision,allocatable 			:: T1(:,:),T2(:,:)
 	double precision                    :: error,x
 	integer                             :: i,j,k
 	character(len=20)                   :: str
@@ -36,8 +36,8 @@ program laplsolv
 		threads = 8
 	end if
 	call omp_set_num_threads(threads)
-	allocate( T1(0:n+1,0:n+1) )
-	allocate( T2(0:n+1,0:n+1) )
+	!allocate( T1(0:n+1,0:n+1) )
+	!allocate( T2(0:n+1,0:n+1) )
 
 	! Set boundary conditions and initial values for the unknowns
 	T1=0.0D0

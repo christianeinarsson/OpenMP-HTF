@@ -6,13 +6,14 @@ program laplsolv
 	! Modified by Berkant Savas (besav@math.liu.se) April 2006
 	!-----------------------------------------------------------------------
 	use omp_lib
-	integer, parameter                  :: nmax=1000, maxiter=1000
+	integer, parameter                  :: nmax=1000, maxiter=228
 	integer										:: n, threads
-	double precision,parameter          :: tol=1.0E-3
+	!double precision,parameter          :: tol=1.0E-3
+	double precision          :: tol=1.0E-3
 	double precision,dimension(0:nmax+1,0:nmax+1) :: T1,T2
 	!double precision,allocatable 			:: T1(:,:),T2(:,:)
 	double precision                    :: error,x
-	integer                             :: i,j,k
+	integer                             :: i,j,k, solution
 	character(len=20)                   :: str
 
 	!Timing variables
@@ -54,35 +55,52 @@ program laplsolv
 
 	! Solve the linear system of equations using the Jacobi method
 	do k=1,maxiter
-
+		solution = 0;
 		error=0.0D0
-!$omp parallel do shared(T1,T2) reduction(MAX:error)
+!$omp parallel shared (T1,T2,error, solution,tol)
+!!$omp parallel do shared(T1,T2) reduction(MAX:error)
+!$omp  do schedule(guided, 1) reduction(MAX:error)
 		do j=1,n
 			T2(1:n,j)= ( T1(0:n-1,j) + T1(2:n+1,j) + T1(1:n,j+1) + T1(1:n,j-1) ) / 4.0D0
 			error=max(error,maxval(abs(T2(1:n,j)-T1(1:n,j))))
 		end do
-!$omp end parallel  do
+!!$omp end parallel  do
+!$omp end do
+!$omp master
 		if (error<tol) then
-			solution = 2
-			exit
+			!solution = 2
+			solution = solution + 2
+			!exit
 		end if
-
 		error=0.0D0
-!$omp parallel do shared(T1,T2) reduction(MAX:error)
+!$omp flush (error)
+!$omp end master
+
+!!$omp parallel do shared(T1,T2) reduction(MAX:error)
+!!$omp do shared(T1,T2) reduction(MAX:error)
+!$omp do schedule(guided, 1) reduction(MAX:error)
 		do j=1,n
 			T1(1:n,j)= ( T2(0:n-1,j) + T2(2:n+1,j) + T2(1:n,j+1) + T2(1:n,j-1) ) / 4.0D0
 			error=max(error,maxval(abs(T2(1:n,j)-T1(1:n,j))))
 		end do
-!$omp end parallel  do
+!!$omp end parallel  do
+!$omp end  do
+!$omp master
 		if (error<tol) then
-			solution = 1
+			solution = solution + 1
+			!solution = 1
+			!exit
+		end if
+!$omp end master
+!$omp end parallel
+		if(solution > 0) then
 			exit
 		end if
 	end do
 
 	end_t = OMP_get_wtime()
 	start_t = end_t - start_t
-	k = k*2 - (solution - 1)
+	k = k*2 - (min(2,solution) - 1)
 
 	write(unit=*,fmt='(a,f7.3,a,i5.3)') 'Time:',start_t,'Number of Iterations:',k
 	if (solution < 2) then

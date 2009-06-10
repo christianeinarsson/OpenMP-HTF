@@ -67,6 +67,8 @@ program laplsolv
 !!$omp end parallel  do
 !$omp end do
 !$omp master
+		write(*,*) 2*k, ' error: ', error
+
 		if (error<tol) then
 			!solution = 2
 			solution = solution + 2
@@ -86,6 +88,7 @@ program laplsolv
 !!$omp end parallel  do
 !$omp end  do
 !$omp master
+		write(*,*) 2*k+1, ' error: ', error
 		if (error<tol) then
 			solution = solution + 1
 			!solution = 1

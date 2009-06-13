@@ -7,27 +7,32 @@ program laplsolv
 	! Serial code parallelized by Christian Einarsson and Joel Purra June 2009
 	!-----------------------------------------------------------------------
 	use omp_lib
-	integer, parameter								:: n=1000, maxiter=1000
-	double precision,parameter						:: tol=1.0E-3
-	double precision,dimension(0:n+1,0:n+1)	:: T1,T2
-	double precision 									:: error
-	integer												:: i,j,k, solution, threads
-	character(len=30)									:: str, filename
-	real(8)												:: start, end1, end2, end3
-	character*100										::	clibuffer
+	integer, parameter								:: n=1000, maxiter=1000			!Problemsize and an restriction on itterations
+	double precision,parameter						:: tol=1.0E-3						!Computationalerror threshold
+	double precision,dimension(0:n+1,0:n+1)	:: T1,T2								!Matrices containing problem/solution
+	integer												:: i,k, solution, threads		!Iteration counters, etc.
+	character(len=30)									:: str, filename					!Strings storing outputformat and output filename
+	real(8)												:: start, end1, end2, end3		!Timing variables
+	character*100										::	clibuffer						!buffer for rading CLI-arguments
 
+	!Getting CLI-parameters
 	call getarg(1, clibuffer)
 	read(clibuffer,*) threads
 	call getarg(2, clibuffer)
 	read(clibuffer,*) filename
 
+	!Setting number of threads.
 	if(threads > 8) then
 		threads = 8
 	end if
 	call omp_set_num_threads(threads)
+
+	!Output problem info
 	write(*,*) '* * *  Solving for...  * * * '
 	write(*,*) '  threads: ', threads
 	write(*,*) '  n:       ', n
+
+	!Record start time
 	start = OMP_get_wtime()
 
 	! Set boundary conditions and initial values for the unknowns
@@ -105,7 +110,7 @@ end program laplsolv
 subroutine jacobi (Told, Tnew, n, solution, tol)
 	integer												:: n, solution
 	double precision,dimension(0:n+1,0:n+1) 	:: Tnew,Told
-	double precision									:: tol, error
+	double precision									:: tol, error, j
 
 	error = 0.0D0
 

@@ -6,7 +6,7 @@ program laplsolv
 	! Modified by Berkant Savas (besav@math.liu.se) April 2006
 	!-----------------------------------------------------------------------
 	use omp_lib
-	integer, parameter                  :: nmax=1000, maxiter=500
+	integer, parameter                  :: nmax=1000, maxiter=1000
 	integer										:: n, threads
 	double precision,parameter          :: tol=1.0E-3
 	!double precision          :: tol=1.0E-3
@@ -16,7 +16,7 @@ program laplsolv
 	character(len=20)                   :: str
 
 	!Timing variables
-	real(8)										:: start_t, end_t
+	real(8)										:: start, end1, end2, end3
 
 	!CLI argument buffer
 	character*100								::	buffer
@@ -34,74 +34,53 @@ program laplsolv
 	call omp_set_num_threads(threads)
 
 	! Set boundary conditions and initial values for the unknowns
-	T1=0.0D0
-	T1(0:n+1 , 0)     = 1.0D0
-	T1(0:n+1 , n+1)   = 1.0D0
-	T1(n+1   , 0:n+1) = 2.0D0
-	T2=0.0D01
-	T2(0:n+1 , 0)     = 1.0D0
-	T2(0:n+1 , n+1)   = 1.0D0
-	T2(n+1   , 0:n+1) = 2.0D0
+	start = OMP_get_wtime()
+!$omp parallel sections default(shared)
+!$omp section
+	T1(0:n , 1:n)		= 0.0D0
+!$omp section
+	T1(0:n , 0)			= 1.0D0
+!$omp section
+	T1(0:n , n+1)		= 1.0D0
+!$omp section
+	T1(n+1 , 0:n+1)	= 2.0D0
+!$omp section
+	T2(0:n , 1:n)		= 0.0D0
+!$omp section
+	T2(0:n , 0)     	= 1.0D0
+!$omp section
+	T2(0:n , n+1)   	= 1.0D0
+!$omp section
+	T2(n+1 , 0:n+1) 	= 2.0D0
+!$omp end  parallel sections
 	solution = 0
 
-	start_t = OMP_get_wtime()
+	end1 = OMP_get_wtime()
 
 	! Solve the linear system of equations using the Jacobi method
+!	!$omp parallel default(shared)
 	do k=1,maxiter
-		solution = 0;
-		error=0.0D0
-!$omp parallel default(shared)
-
-!$omp   do  schedule(guided, 1) reduction(MAX:error)
-		do j=1,n
-			T2(1:n,j)= ( T1(0:n-1,j) + T1(2:n+1,j) + T1(1:n,j+1) + T1(1:n,j-1) ) / 4.0D0
-			error=max(error,maxval(abs(T2(1:n,j)-T1(1:n,j))))
-		end do
-!$omp end do
-
-!$omp master
-		write(*,*) 2*k-1, ' error: ', error
-		if (error<tol) then
-			solution = solution + 2
-		end if
-		error=0.0D0
-!$omp end master
-
-!$omp  do  schedule(guided, 1) reduction(MAX:error)
-		do j=1,n
-			T1(1:n,j)= ( T2(0:n-1,j) + T2(2:n+1,j) + T2(1:n,j+1) + T2(1:n,j-1) ) / 4.0D0
-			error=max(error,maxval(abs(T2(1:n,j)-T1(1:n,j))))
-		end do
-!$omp end  do
-
-!$omp master
-		write(*,*) 2*k, ' error: ', error
-		if (error<tol) then
-			solution = solution + 1
-		end if
-!$omp end master
-
-!$omp end parallel
-
-		if(solution > 0) then
-			exit
+		if (mod(k,2) == 0) then
+			call jacobi(T1,T2,n,solution,tol)
+			if( solution == 1) then
+				solution = 2
+				exit
+			end if
+		else
+			call jacobi(T2,T1,n,solution,tol)
+			if( solution == 1) then
+				solution = 1
+				exit
+			end if
 		end if
 	end do
+!	!$omp end parallel
+	end2 = OMP_get_wtime()
 
-	end_t = OMP_get_wtime()
-	start_t = end_t - start_t
-	k = k*2 - (min(2,solution) - 1)
-
-	write(unit=*,fmt='(a,f7.3,a,i5.3)') 'Time:',start_t,'Number of Iterations:',k
-	if (solution < 2) then
-		write(unit=*,fmt=*) 'Temperature of element Tx(1,1)  =',T1(1,1)
-	else
-		write(unit=*,fmt=*) 'Temperature of element Tx(1,1)  =',T2(1,1)
-	end if
-
+	write(*,*) 'Writing solution...'
 	open(unit=7,action='write',file=filename,status='unknown')
 	write(unit=str,fmt='(a,i6,a)') '(',N,'F10.6)'
-	write(unit=7, fmt='(A,I2,A,I6,A,I6,A,F7.3)') 'threads=', threads, ' n =', n, ' iterations =', k, ' time-to-solve =', start_t
+	write(unit=7, fmt='(A,I2,A,I6,A,I6,A,F7.3)') 'threads=', threads, ' n =', n, ' iterations =', k, ' time-to-solve =', end1-start
 	if(solution == 1) then
 		do i=0,n+1
 			write (unit=7,fmt=str) T1(i,0:n+1)
@@ -113,32 +92,50 @@ program laplsolv
 	end if
 	close(unit=7)
 
+	end3 = OMP_get_wtime()
+
+	write(unit=*,fmt='(a,f7.4,a)') 'Init time: ',end1-start, ' s'
+	write(unit=*,fmt='(a,f7.4,a)') 'Solve time:',end2-end1 , ' s'
+	write(unit=*,fmt='(a,f7.4a)') 'Write time:', end3-end2 , ' s'
+	write(unit=*,fmt='(a,f7.4,a)') 'Total time:',end3-start, ' s'
+
+	write(unit=*,fmt='(a,i5.3)') 'Number of Iterations:',k
+	if (solution == 1) then
+		write(unit=*,fmt=*) 'Temperature of element Tx(1,1)  =',T1(1,1)
+	else
+		write(unit=*,fmt=*) 'Temperature of element Tx(1,1)  =',T2(1,1)
+	end if
+
 end program laplsolv
 
-
 subroutine jacobi (Told, Tnew, n, solution, tol)
-	double precision,dimension(0:nmax+1,0:nmax+1) 	:: Tnew,Told
-	double precision											:: tol, error
-	integer														:: n, solution
+	integer												:: n, solution
+	double precision,dimension(0:n+1,0:n+1) 	:: Tnew,Told
+	double precision									:: tol, error
 
-
-!$omp master
+!!$omp parallel default(shared)
+!!$omp master
 	error = 0.0D0
-!$omp end master
+!!$omp end master
 
-!$omp   do  schedule(guided, 1) reduction(MAX:error)
+!!$omp   do  schedule(guided, 1) reduction(MAX:error)
+!$omp  parallel do default(shared) schedule(guided, 1) reduction(MAX:error)
 	do j=1,n
 		Tnew(1:n,j)= ( Told(0:n-1,j) + Told(2:n+1,j) + Told(1:n,j+1) + Told(1:n,j-1) ) / 4.0D0
 		error=max(error,maxval(abs(Tnew(1:n,j)-Told(1:n,j))))
 	end do
-!$omp end do
+!$omp end parallel do
+!!$omp end do
 
-!$omp master
-	write(*,*) 2*k-1, ' error: ', error
+!!$omp master
+	!write(*,*) ' error: ', error
 	if (error<tol) then
-		solution = solution + 2
+		solution = 1
+	else
+		solution = 0
 	end if
-!$omp end master
+!!$omp end master
 
-end subroutine
+!!$omp end parallel
+end subroutine jacobi
 

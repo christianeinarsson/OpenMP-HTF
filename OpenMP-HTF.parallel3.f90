@@ -128,13 +128,14 @@ subroutine jacobi (Told, Tnew, n, solution, tol)
 	double precision,dimension(0:n+1,0:n+1) 	:: Tnew,Told
 	double precision									:: tol, error, j
 
+	!Initialize error.
 	error = 0.0D0
+
 	! Share the work of the do loop over multiple threads using guded scheduling.
 	! By using two matrices one fore reading and one for writing all the
 	! individual calculations becomes independant, thus posible to do in parallel.
 !$omp  parallel do default(shared) schedule(guided, 1) reduction(MAX:error)
 	do j=1,n
-
 		Tnew(1:n,j)= ( Told(0:n-1,j) + Told(2:n+1,j) + Told(1:n,j+1) + Told(1:n,j-1) ) / 4.0D0
 		error=max(error,maxval(abs(Tnew(1:n,j)-Told(1:n,j))))
 	end do

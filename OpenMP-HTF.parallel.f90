@@ -1,120 +1,97 @@
 program laplsolv
 	!-----------------------------------------------------------------------
-	! Serial program for solving the heat conduction problem
+	! Parallel program for solving the heat conduction problem
 	! on a square using the Jacobi method.
-	! Written by Fredrik Berntsson (frber@math.liu.se) March 2003
-	! Modified by Berkant Savas (besav@math.liu.se) April 2006
+	! Serial code written by Fredrik Berntsson (frber@math.liu.se) March 2003
+	! Serial code modified by Berkant Savas (besav@math.liu.se) April 2006
+	! Serial code parallelized by Christian Einarsson and Joel Purra June 2009
 	!-----------------------------------------------------------------------
 	use omp_lib
-	integer, parameter                  :: nmax=1000, maxiter=228
-	integer										:: n, threads
-	!double precision,parameter          :: tol=1.0E-3
-	double precision          :: tol=1.0E-3
-	double precision,dimension(0:nmax+1,0:nmax+1) :: T1,T2
-	!double precision,allocatable 			:: T1(:,:),T2(:,:)
-	double precision                    :: error,x
-	integer                             :: i,j,k, solution
-	character(len=20)                   :: str
+	integer, parameter								:: n=1000, maxiter=1000			!Problemsize and an restriction on itterations
+	double precision,parameter						:: tol=1.0E-3						!Computationalerror threshold
+	double precision,dimension(0:n+1,0:n+1)	:: T1,T2								!Matrices containing problem/solution
+	integer												:: i,k, solution, threads		!Iteration counters, etc.
+	character(len=30)									:: str, filename					!Strings storing outputformat and output filename
+	real(8)												:: start, end1, end2, end3		!Timing variables
+	character*100										::	clibuffer						!buffer for rading CLI-arguments
 
-	!Timing variables
-	real(8)										:: start_t, end_t
+	!Getting CLI-parameters
+	call getarg(1, clibuffer)
+	read(clibuffer,*) threads
+	call getarg(2, clibuffer)
+	read(clibuffer,*) filename
 
-	!CLI argument buffer
-	character*100								::	buffer
-	character(len=30)							:: filename
-
-	call getarg(1, buffer)
-	read(buffer,*) threads
-	call getarg(2, buffer)
-	read(buffer,*) n
-	call getarg(3, buffer)
-	read(buffer,*) filename
-
-	if(n > nmax) then
-		n = nmax
-	end if
+	!Setting number of threads.
 	if(threads > 8) then
 		threads = 8
 	end if
 	call omp_set_num_threads(threads)
-	!allocate( T1(0:n+1,0:n+1) )
-	!allocate( T2(0:n+1,0:n+1) )
 
-	! Set boundary conditions and initial values for the unknowns
-	T1=0.0D0
-	T1(0:n+1 , 0)     = 1.0D0
-	T1(0:n+1 , n+1)   = 1.0D0
-	T1(n+1   , 0:n+1) = 2.0D0
-	T2=0.0D0
-	T2(0:n+1 , 0)     = 1.0D0
-	T2(0:n+1 , n+1)   = 1.0D0
-	T2(n+1   , 0:n+1) = 2.0D0
-	solution = 0
+	!Output problem info
+	write(*,*) '* * *  Solving for...  * * * '
+	write(*,*) '  threads: ', threads
+	write(*,*) '  n:       ', n
 
-	start_t = OMP_get_wtime()
+	!Record start time
+	start = OMP_get_wtime()
 
-	! Solve the linear system of equations using the Jacobi method
+	! Set boundary conditions and initial values for the unknowns.
+	!  This part is divided in independent prallel sections, mostly becuse it's
+	!  posible, only a smal speedup is gained. The probable reason is that the
+	!  sections are to small.
+!$omp parallel sections default(shared)
+!$omp section
+	T1(0:n , 1:n)		= 0.0D0
+!$omp section
+	T1(0:n , 0)			= 1.0D0
+!$omp section
+	T1(0:n , n+1)		= 1.0D0
+!$omp section
+	T1(n+1 , 0:n+1)	= 2.0D0
+!$omp section
+	T2(0:n , 1:n)		= 0.0D0
+!$omp section
+	T2(0:n , 0)     	= 1.0D0
+!$omp section
+	T2(0:n , n+1)   	= 1.0D0
+!$omp section
+	T2(n+1 , 0:n+1) 	= 2.0D0
+!$omp end  parallel sections
+
+	!Record then end time for initialization and start time for the solving.
+	end1 = OMP_get_wtime()
+
+	! Solve the linear system of equations using the Jacobi method.
+	!	The loop repetedly calls the subroutine jacobi while alternating
+	!	between the matrices. First jacobi reads from T2 and writes to T1
+	!  in the next itteration its the otherway around.
+	!  The loop is exited when one solution meets the given tolerance
+	!	requirement. The number of the matrix containing the solution are
+	!  stored in the solution variable.
 	do k=1,maxiter
-		solution = 0;
-		error=0.0D0
-!$omp parallel shared (T1,T2,error, solution,tol)
-!!$omp parallel do shared(T1,T2) reduction(MAX:error)
-!$omp  do schedule(guided, 1) reduction(MAX:error)
-		do j=1,n
-			T2(1:n,j)= ( T1(0:n-1,j) + T1(2:n+1,j) + T1(1:n,j+1) + T1(1:n,j-1) ) / 4.0D0
-			error=max(error,maxval(abs(T2(1:n,j)-T1(1:n,j))))
-		end do
-!!$omp end parallel  do
-!$omp end do
-!$omp master
-		write(*,*) 2*k, ' error: ', error
-
-		if (error<tol) then
-			!solution = 2
-			solution = solution + 2
-			!exit
-		end if
-		error=0.0D0
-!$omp flush (error)
-!$omp end master
-
-!!$omp parallel do shared(T1,T2) reduction(MAX:error)
-!!$omp do shared(T1,T2) reduction(MAX:error)
-!$omp do schedule(guided, 1) reduction(MAX:error)
-		do j=1,n
-			T1(1:n,j)= ( T2(0:n-1,j) + T2(2:n+1,j) + T2(1:n,j+1) + T2(1:n,j-1) ) / 4.0D0
-			error=max(error,maxval(abs(T2(1:n,j)-T1(1:n,j))))
-		end do
-!!$omp end parallel  do
-!$omp end  do
-!$omp master
-		write(*,*) 2*k+1, ' error: ', error
-		if (error<tol) then
-			solution = solution + 1
-			!solution = 1
-			!exit
-		end if
-!$omp end master
-!$omp end parallel
-		if(solution > 0) then
-			exit
+		if (mod(k,2) == 0) then
+			call jacobi(T1,T2,n,solution,tol)
+			if( solution == 1) then
+				solution = 2
+				exit
+			end if
+		else
+			call jacobi(T2,T1,n,solution,tol)
+			if( solution == 1) then
+				solution = 1
+				exit
+			end if
 		end if
 	end do
 
-	end_t = OMP_get_wtime()
-	start_t = end_t - start_t
-	k = k*2 - (min(2,solution) - 1)
+	!Record end time fore equation solving and start time for writing
+	end2 = OMP_get_wtime()
 
-	write(unit=*,fmt='(a,f7.3,a,i5.3)') 'Time:',start_t,'Number of Iterations:',k
-	if (solution < 2) then
-		write(unit=*,fmt=*) 'Temperature of element Tx(1,1)  =',T1(1,1)
-	else
-		write(unit=*,fmt=*) 'Temperature of element Tx(1,1)  =',T2(1,1)
-	end if
-
+	!Write the solved problem to a file.
+	write(*,*) 'Writing solution...'
 	open(unit=7,action='write',file=filename,status='unknown')
 	write(unit=str,fmt='(a,i6,a)') '(',N,'F10.6)'
-	write(unit=7, fmt='(A,I2,A,I6,A,I6,A,F7.3)') 'threads=', threads, ' n =', n, ' iterations =', k, ' time-to-solve =', start_t
+	write(unit=7, fmt='(A,I2,A,I6,A,I6,A,F7.3)') 'threads=', threads, ' n =', n, ' iterations =', k, ' time-to-solve =', end1-start
 	if(solution == 1) then
 		do i=0,n+1
 			write (unit=7,fmt=str) T1(i,0:n+1)
@@ -126,4 +103,49 @@ program laplsolv
 	end if
 	close(unit=7)
 
+	!Record time for global end.
+	end3 = OMP_get_wtime()
+
+	!Write information to console.
+	write(unit=*,fmt='(a,f12.4,a)') 'Init time: ',end1-start, ' s'
+	write(unit=*,fmt='(a,f12.4,a)') 'Solve time:',end2-end1 , ' s'
+	write(unit=*,fmt='(a,f12.4,a)') 'Write time:', end3-end2 , ' s'
+	write(unit=*,fmt='(a,f12.4,a)') 'Total time:',end3-start, ' s'
+	write(unit=*,fmt='(a,i5.3)') 'Number of Iterations:',k
+	if (solution == 1) then
+		write(unit=*,fmt=*) 'Temperature of element Tx(1,1)  =',T1(1,1)
+	else
+		write(unit=*,fmt=*) 'Temperature of element Tx(1,1)  =',T2(1,1)
+	end if
+
 end program laplsolv
+
+
+! Subroutine for doing one itteration of the algorithm in parallel.
+
+subroutine jacobi (Told, Tnew, n, solution, tol)
+	integer												:: j, n, solution
+	double precision,dimension(0:n+1,0:n+1) 	:: Tnew,Told
+	double precision									:: tol, error
+
+	!Initialize error.
+	error = 0.0D0
+
+	! Share the work of the do loop over multiple threads using guded scheduling.
+	! By using two matrices one fore reading and one for writing all the
+	! individual calculations becomes independant, thus posible to do in parallel.
+!$omp  parallel do default(shared) schedule(guided, 1) reduction(MAX:error)
+	do j=1,n
+		Tnew(1:n,j)= ( Told(0:n-1,j) + Told(2:n+1,j) + Told(1:n,j+1) + Told(1:n,j-1) ) / 4.0D0
+		error=max(error,maxval(abs(Tnew(1:n,j)-Told(1:n,j))))
+	end do
+!$omp end parallel do
+
+	! Check if the error is below the given tolerance level.
+	if (error<tol) then
+		solution = 1
+	else
+		solution = 0
+	end if
+
+end subroutine jacobi
